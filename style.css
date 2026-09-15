@@ -683,6 +683,19 @@ dialog::backdrop { background: rgba(10, 8, 7, .85); }
   .services__photo { order: 0; max-width: 26rem; justify-self: start; }
 
   .hero__sound { display: none; }
+  /* Shown only if the phone blocked autoplay */
+  .hero-blocked .hero__sound,
+  .hero-user-paused .hero__sound {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: .5rem 1.1rem;
+    border: 1px solid rgba(239, 231, 218, .5);
+    border-radius: 999px;
+    background: rgba(22, 18, 15, .55);
+    color: var(--paper);
+    font-size: .85rem;
+  }
   .hero__content { grid-template-columns: 1fr; gap: 1.4rem; }
 
   .destinations { min-height: 0; align-items: flex-end; }

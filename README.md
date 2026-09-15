@@ -14,7 +14,9 @@ assets/
   favicon.svg
   photos/           full-size photos (webp, 2000px long edge)
   thumbs/           grid-size copies of the same photos (webp, 900px)
-  video/            hero film: .mp4 (main) and .webm (backup), wide and mobile versions
+  video/            hero film: .mp4 (main) and .webm (backup)
+                    hero.*        1920x1080 for laptops and landscape tablets
+                    hero-mobile.* 720x1280 for phones and portrait tablets
 ```
 
 ## Adding a portfolio photo
@@ -28,9 +30,9 @@ The photo count on the folder updates automatically.
 
 ## Publishing on GitHub Pages
 
-1. Push this folder to a repository named `lav-ghosh-photography`.
+1. Push this folder to the repository `Lav-ghosh-photography`.
 2. Go to Settings, then Pages, and set the source to the `main` branch, root folder.
-3. The site will be live at `https://suklengogoi.github.io/lav-ghosh-photography/`.
+3. The site will be live at `https://suklengogoi.github.io/Lav-ghosh-photography/`.
 
 If the repository name or domain is different, update the `og:url`, `og:image` and `canonical` addresses at the top of `index.html`.
 
