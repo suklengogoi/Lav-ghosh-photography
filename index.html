@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=5">
   <link rel="preload" as="image" href="assets/photos/bride-03.webp">
 </head>
 <body>
@@ -69,12 +69,18 @@
 
   <!-- ========== HERO ========== -->
   <section class="hero" id="top" aria-label="Introduction">
-    <video class="hero__video" id="heroVideo" muted loop playsinline webkit-playsinline preload="auto" disablepictureinpicture
+    <video class="hero__video" id="heroVideo" autoplay muted loop playsinline webkit-playsinline
+           preload="auto" disablepictureinpicture disableremoteplayback
            poster="assets/photos/bride-03.webp"
-           data-src-wide="assets/video/hero"
-           data-src-tall="assets/video/hero-mobile"
            data-poster-tall="assets/photos/bride-02.webp"
-           aria-hidden="true"></video>
+           aria-hidden="true">
+      <!-- Laptops, desktops and landscape tablets: wide film -->
+      <source src="assets/video/hero-film-wide.mp4" type="video/mp4" media="(min-aspect-ratio: 4/5)">
+      <source src="assets/video/hero-film-wide.webm" type="video/webm" media="(min-aspect-ratio: 4/5)">
+      <!-- Phones and portrait tablets: vertical film -->
+      <source src="assets/video/hero-film-tall.mp4" type="video/mp4">
+      <source src="assets/video/hero-film-tall.webm" type="video/webm">
+    </video>
     <div class="hero__shade" aria-hidden="true"></div>
 
     <div class="hero__content">
@@ -310,6 +316,6 @@
   <button class="lightbox__nav lightbox__next" id="lbNext" aria-label="Next photo">›</button>
 </dialog>
 
-<script src="script.js"></script>
+<script src="script.js?v=5"></script>
 </body>
 </html>

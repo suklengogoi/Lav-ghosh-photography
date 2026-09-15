@@ -15,8 +15,8 @@ assets/
   photos/           full-size photos (webp, 2000px long edge)
   thumbs/           grid-size copies of the same photos (webp, 900px)
   video/            hero film: .mp4 (main) and .webm (backup)
-                    hero.*        1920x1080 for laptops and landscape tablets
-                    hero-mobile.* 720x1280 for phones and portrait tablets
+                    hero-film-wide.*  1920x1080 for laptops and landscape tablets
+                    hero-film-tall.*  720x1280 for phones and portrait tablets
 ```
 
 ## Adding a portfolio photo
@@ -42,3 +42,9 @@ If the repository name or domain is different, update the `og:url`, `og:image` a
 - Instagram: https://www.instagram.com/portraitsbylavghosh/
 - Facebook: https://www.facebook.com/lav.ghosh.77
 - Map: https://maps.app.goo.gl/2yn5K17pZN2jZXrm6
+
+## Updating files later
+
+- The hero film sources are written directly in `index.html`, so the film plays even if `script.js` fails to load.
+- If you replace a video, give it a new file name and update the `<source>` lines in `index.html`. Reusing an old name can leave visitors with a cached, broken copy.
+- After changing `style.css` or `script.js`, raise the `?v=` number where they are linked at the top and bottom of `index.html`.

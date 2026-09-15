@@ -148,36 +148,29 @@ window.matchMedia("(min-width: 861px)").addEventListener("change", e => {
   if (e.matches && isMenuOpen()) setMenu(false, { returnFocus: false });
 });
 
-/* ---------- Hero film ---------- */
+/* ---------- Hero film ----------
+   The video sources are written in index.html, so the film autoplays even
+   without this script. This part only adds: the mobile poster, the
+   pause/play button, a fallback when a phone blocks autoplay, and pausing
+   when the hero is off screen. */
 const heroVideo = $("#heroVideo");
 const heroPause = $("#heroPause");
 
 (function setupHero() {
-  const tall = window.matchMedia("(max-aspect-ratio: 4/5)").matches;
-  if (tall) heroVideo.poster = heroVideo.dataset.posterTall;
-
-  if (reduceMotion) {
-    heroPause.hidden = true;
-    return; // keep the still poster only
+  if (window.matchMedia("(max-aspect-ratio: 4/5)").matches) {
+    heroVideo.poster = heroVideo.dataset.posterTall;
   }
 
-  // Phones only autoplay a video that is muted and inline.
-  // Set these as properties too, not just attributes (needed on some iOS/Android versions).
+  // Autoplay needs "muted" as a property too on some phones
   heroVideo.muted = true;
   heroVideo.defaultMuted = true;
   heroVideo.playsInline = true;
-  heroVideo.setAttribute("muted", "");
-  heroVideo.setAttribute("playsinline", "");
-  heroVideo.setAttribute("webkit-playsinline", "");
-  heroVideo.disableRemotePlayback = true;
 
-  // MP4 (H.264) is the main file; WebM (VP9) is the backup
-  const base = tall ? heroVideo.dataset.srcTall : heroVideo.dataset.srcWide;
-  const canMp4 = heroVideo.canPlayType('video/mp4; codecs="avc1.4D401F"') !== "";
-  const canWebm = heroVideo.canPlayType('video/webm; codecs="vp9"') !== "";
-  if (!canMp4 && !canWebm) {
+  if (reduceMotion) {
+    heroVideo.removeAttribute("autoplay");
+    heroVideo.pause();
     heroPause.hidden = true;
-    return; // poster only
+    return; // still poster only
   }
 
   let userPaused = false;
@@ -188,13 +181,15 @@ const heroPause = $("#heroPause");
   };
 
   const tryPlay = () => {
-    if (userPaused) return;
+    if (userPaused || !heroVideo.paused) return;
     const attempt = heroVideo.play();
     if (attempt && attempt.catch) {
-      attempt.catch(() => {
-        // Autoplay was blocked (for example iPhone Low Power Mode): show the play button
-        document.body.classList.add("hero-blocked");
-        showButton(false);
+      attempt.catch(err => {
+        if (err && err.name === "NotAllowedError") {
+          // Autoplay blocked (for example iPhone Low Power Mode): show the play button
+          document.body.classList.add("hero-blocked");
+          showButton(false);
+        }
       });
     }
   };
@@ -204,25 +199,23 @@ const heroPause = $("#heroPause");
     showButton(true);
   });
   heroVideo.addEventListener("pause", () => showButton(false));
-  heroVideo.addEventListener("canplay", tryPlay);
+  heroVideo.addEventListener("loadeddata", tryPlay);
 
-  // If the phone can't decode the MP4, switch to the WebM once
-  heroVideo.addEventListener("error", () => {
-    const usingWebm = heroVideo.currentSrc.endsWith(".webm");
-    if (canWebm && !usingWebm) {
-      heroVideo.src = `${base}.webm`;
-      heroVideo.load();
-      tryPlay();
-    } else {
-      heroPause.hidden = true; // nothing playable: poster only
-    }
-  });
+  // If every source fails (all files missing or unplayable), keep the poster
+  const sources = $$("source", heroVideo);
+  const lastSource = sources[sources.length - 1];
+  if (lastSource) {
+    lastSource.addEventListener("error", () => {
+      heroPause.hidden = true;
+      console.warn("Hero film: no playable video file found in assets/video/");
+    });
+  }
 
   // Power-saving modes block autoplay until the visitor touches the page
   const unlockEvents = ["touchend", "pointerdown", "click", "keydown"];
   const unlock = e => {
     if (heroPause.contains(e.target)) return; // the button handles its own tap
-    if (heroVideo.paused && !userPaused) tryPlay();
+    tryPlay();
     unlockEvents.forEach(ev => document.removeEventListener(ev, unlock, true));
   };
   unlockEvents.forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
@@ -240,9 +233,8 @@ const heroPause = $("#heroPause");
     }
   });
 
-  heroVideo.src = `${canMp4 ? base + ".mp4" : base + ".webm"}`;
-  heroVideo.load();
-  tryPlay();
+  // In case autoplay already failed before this script ran
+  if (heroVideo.readyState >= 2) tryPlay();
 
   // Save battery: pause when the hero is off screen, resume when it's back
   if ("IntersectionObserver" in window) {
