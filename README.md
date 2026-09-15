@@ -1,6 +1,6 @@
 # Lav Ghosh Photography
 
-Website for Lav Ghosh Photography, a wedding photography and cinematography studio in Guwahati, Assam.
+Website for Lav Ghosh Photography, a wedding photography and cinematography studio in Barpeta Road, Assam.
 
 Static site: `index.html`, `style.css` and `script.js`. No frameworks and no build step. Hosted on GitHub Pages.
 
