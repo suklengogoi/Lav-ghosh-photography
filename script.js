@@ -327,6 +327,11 @@ gallery.addEventListener("cancel", e => {
 });
 
 window.addEventListener("popstate", e => {
+  // Back pressed while a photo opened from the moving strip is showing
+  if (lightbox.open && lbMode === "single" && !(e.state && e.state.photo)) {
+    lightbox.close();
+    return;
+  }
   const key = e.state && e.state.folder;
   if (key) openGallery(key, { push: false });
   else closeGallery({ fromHistory: true });
@@ -340,15 +345,123 @@ if (FOLDERS[location.hash.slice(1)]) {
   openGallery(key);
 }
 
+/* ---------- Photo viewer (lightbox) ----------
+   Two ways in:
+   - "gallery": from a folder; closing returns to the folder grid.
+   - "single":  from the moving strip; closing returns straight to the page. */
+const lightbox = $("#lightbox");
+const lbImg = $("#lbImg");
+const lbCount = $("#lbCount");
+let lbIndex = 0;
+let lbList = [];
+let lbLabel = "";
+let lbMode = "gallery";
+let lbReturnTo = null;
+
+// Remember whether the visitor is using a keyboard (for focus handling)
+let usingKeyboard = false;
+document.addEventListener("keydown", e => { if (e.key === "Tab") usingKeyboard = true; }, true);
+document.addEventListener("pointerdown", () => { usingKeyboard = false; }, true);
+
+function showPhoto(i) {
+  lbIndex = (i + lbList.length) % lbList.length;
+  const [file, , , alt] = lbList[lbIndex];
+
+  lbImg.classList.add("is-loading");
+  const next = new Image();
+  next.onload = () => {
+    lbImg.src = next.src;
+    lbImg.alt = alt;
+    lbImg.classList.remove("is-loading");
+  };
+  next.src = `assets/photos/${file}`;
+  lbCount.textContent = `${lbLabel}${lbIndex + 1} / ${lbList.length}`;
+
+  // Preload neighbours
+  [lbIndex + 1, lbIndex - 1].forEach(n => {
+    const [f] = lbList[(n + lbList.length) % lbList.length];
+    new Image().src = `assets/photos/${f}`;
+  });
+}
+
+// From a folder grid
+function openLightbox(i) {
+  lbMode = "gallery";
+  lbList = PHOTOS[currentFolder];
+  lbLabel = "";
+  lbReturnTo = null;
+  lbImg.removeAttribute("src");
+  showPhoto(i);
+  lightbox.showModal();
+}
+
+// From the moving strip: just the photo, no folder behind it
+function openSinglePhoto(key, i, fromEl) {
+  lbMode = "single";
+  lbList = PHOTOS[key];
+  lbLabel = `${FOLDERS[key].title} · `;
+  lbReturnTo = fromEl;
+  lbImg.removeAttribute("src");
+  showPhoto(i);
+  lightbox.showModal();
+  document.body.classList.add("is-locked");
+  history.pushState({ photo: true }, "", location.href); // phone Back closes the photo
+  document.dispatchEvent(new CustomEvent("viewer:change", { detail: true }));
+}
+
+$("#lbClose").addEventListener("click", () => lightbox.close());
+$("#lbPrev").addEventListener("click", () => showPhoto(lbIndex - 1));
+$("#lbNext").addEventListener("click", () => showPhoto(lbIndex + 1));
+
+lightbox.addEventListener("click", e => {
+  if (e.target === lightbox) lightbox.close(); // click on the empty area
+});
+
+lightbox.addEventListener("close", () => {
+  if (lbMode === "single") {
+    if (!gallery.open) document.body.classList.remove("is-locked");
+    // Closed with X / Esc: drop the history entry we added
+    if (history.state && history.state.photo) history.back();
+    // Keyboard users go back to the frame; mouse/touch users keep no focus,
+    // so nothing on the strip stays "focused" and holds it still
+    if (usingKeyboard && lbReturnTo) lbReturnTo.focus({ preventScroll: true });
+    else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    lbMode = "gallery";
+    document.dispatchEvent(new CustomEvent("viewer:change", { detail: false }));
+    return;
+  }
+  const items = $$(".gallery__item", galleryGrid);
+  if (items[lbIndex]) items[lbIndex].focus({ preventScroll: true });
+});
+
+document.addEventListener("keydown", e => {
+  if (!lightbox.open) return;
+  if (e.key === "ArrowRight") showPhoto(lbIndex + 1);
+  if (e.key === "ArrowLeft") showPhoto(lbIndex - 1);
+});
+
+// Swipe on phones
+let touchX = null;
+lightbox.addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
+lightbox.addEventListener("touchend", e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 50) showPhoto(lbIndex + (dx < 0 ? 1 : -1));
+  touchX = null;
+});
+
 /* ---------- Moving frames ----------
    Picks photos from PHOTOS, draws them twice in a row and slides the row
-   left forever (CSS animation). The second copy makes the loop seamless.
+   left forever. The second copy makes the loop seamless.
+   The strip eases to a stop and eases back up instead of jumping.
    To change the photos, edit REEL_PICKS: [folder, photo number]. */
 const REEL_PICKS = [
   ["bride", 2], ["prewedding", 1], ["candid", 3], ["couple", 1],
   ["prewedding", 2], ["bride", 6], ["candid", 1], ["prewedding", 6],
   ["couple", 2], ["bride", 8], ["prewedding", 10], ["candid", 5]
 ];
+const REEL_SPEED = 45;      // pixels per second
+const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
 
 (function setupReel() {
   const reel = $("#frames");
@@ -356,7 +469,7 @@ const REEL_PICKS = [
   const track = $("#reelTrack");
   if (!reel || !track) return;
 
-  let reelDragged = false; // true when the visitor swiped instead of tapping
+  let dragged = false; // true when the visitor swiped instead of tapping
   const picks = REEL_PICKS.filter(([key, n]) => PHOTOS[key] && PHOTOS[key][n - 1]);
 
   const makeFrame = ([key, n], isCopy) => {
@@ -379,10 +492,8 @@ const REEL_PICKS = [
     img.draggable = false;
     btn.appendChild(img);
     btn.addEventListener("click", () => {
-      if (reelDragged) return; // a swipe/hold is not a tap
-      lastFolderButton = btn;
-      openGallery(key);
-      openLightbox(n - 1);
+      if (dragged) return; // a swipe is not a tap
+      openSinglePhoto(key, n - 1, btn);
     });
     return btn;
   };
@@ -392,96 +503,135 @@ const REEL_PICKS = [
   picks.forEach(p => frag.appendChild(makeFrame(p, true)));
   track.appendChild(frag);
 
-  // Keep the speed the same on every screen: about 45px per second
-  const setSpeed = () => {
-    const half = track.scrollWidth / 2;
-    if (half > 0) track.style.setProperty("--reel-duration", `${Math.round(half / 45)}s`);
-  };
-  setSpeed();
-  window.addEventListener("resize", setSpeed, { passive: true });
-  window.addEventListener("load", setSpeed);
+  if (reduceMotion) return; // CSS turns the strip into a swipeable row
 
-  // Press and hold on phones pauses the strip; a tiny movement still counts as a tap
-  let startX = 0;
-  viewport.addEventListener("pointerdown", e => {
-    startX = e.clientX;
-    reelDragged = false;
-    viewport.classList.add("is-held");
-  });
-  viewport.addEventListener("pointermove", e => {
-    if (viewport.classList.contains("is-held") && Math.abs(e.clientX - startX) > 10) reelDragged = true;
-  });
-  ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
-    viewport.addEventListener(ev, () => viewport.classList.remove("is-held"))
+  // Older browsers without the Web Animations API keep the plain CSS animation
+  if (!track.animate) {
+    track.style.setProperty("--reel-duration", `${Math.round(track.scrollWidth / 2 / REEL_SPEED)}s`);
+    return;
+  }
+
+  reel.classList.add("reel--js"); // switches off the CSS animation
+  const durationFor = () => Math.max(10000, Math.round((track.scrollWidth / 2 / REEL_SPEED) * 1000));
+  let duration = durationFor();
+  const anim = track.animate(
+    [{ transform: "translate3d(0, 0, 0)" }, { transform: "translate3d(-50%, 0, 0)" }],
+    { duration, iterations: Infinity, easing: "linear" }
   );
 
-  // Save battery: stop the animation while the strip is off screen
+  // Keep the same position (as a fraction) when the screen size changes
+  const refit = () => {
+    const next = durationFor();
+    if (next === duration) return;
+    const progress = ((anim.currentTime || 0) % duration) / duration;
+    duration = next;
+    anim.effect.updateTiming({ duration });
+    anim.currentTime = progress * duration;
+  };
+  window.addEventListener("resize", refit, { passive: true });
+  window.addEventListener("load", refit);
+
+  // ---- Smooth pause / resume ----
+  // Every reason to hold the strip still is tracked; it moves only when there are none.
+  const holds = new Set();
+  let rate = 1;
+  let rampFrom = 1;
+  let rampTo = 1;
+  let rampStart = 0;
+  let rafId = 0;
+
+  const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+  const step = now => {
+    const t = Math.min(1, (now - rampStart) / REEL_EASE_MS);
+    rate = rampFrom + (rampTo - rampFrom) * ease(t);
+    anim.playbackRate = rate;
+    if (t < 1) rafId = requestAnimationFrame(step);
+    else rafId = 0;
+  };
+
+  const update = ({ instant = false } = {}) => {
+    const target = holds.size ? 0 : 1;
+    reel.dataset.state = target ? "moving" : "paused"; // handy for testing
+    if (instant) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+      rate = rampTo = rampFrom = target;
+      anim.playbackRate = target;
+      return;
+    }
+    if (target === rampTo && rafId) return;
+    if (target === rate) { rampTo = target; return; }
+    rampFrom = rate;
+    rampTo = target;
+    rampStart = performance.now();
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(step);
+  };
+  const hold = (why, on, opts) => {
+    const had = holds.has(why);
+    if (on) holds.add(why); else holds.delete(why);
+    if (had !== on) update(opts);
+  };
+
+  // Mouse over the strip (computers only)
+  viewport.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") hold("hover", true); });
+  viewport.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") hold("hover", false); });
+
+  // Press and hold with a finger; small movement still counts as a tap
+  // A press longer than LONG_PRESS_MS means "hold to look", so releasing it doesn't open the photo
+  const LONG_PRESS_MS = 500;
+  let startX = 0;
+  let pressTimer = 0;
+  viewport.addEventListener("pointerdown", e => {
+    startX = e.clientX;
+    dragged = false;
+    if (e.pointerType !== "mouse") {
+      hold("press", true);
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => { dragged = true; }, LONG_PRESS_MS);
+    }
+  });
+  viewport.addEventListener("pointermove", e => {
+    if (holds.has("press") && Math.abs(e.clientX - startX) > 10) dragged = true;
+  });
+  // Release anywhere (the finger may lift outside the strip, or the page may scroll)
+  ["pointerup", "pointercancel"].forEach(ev =>
+    document.addEventListener(ev, () => {
+      clearTimeout(pressTimer);
+      hold("press", false);
+    }, true)
+  );
+  // No "save image" pop-up on long press inside the strip
+  viewport.addEventListener("contextmenu", e => {
+    if (e.target.closest(".reel__frame")) e.preventDefault();
+  });
+
+  // Keyboard focus on a frame (not mouse or touch focus)
+  viewport.addEventListener("focusin", e => {
+    if (usingKeyboard && e.target.matches(".reel__frame")) hold("keyboard", true);
+  });
+  viewport.addEventListener("focusout", e => {
+    if (!viewport.contains(e.relatedTarget)) hold("keyboard", false);
+  });
+
+  // While a photo from the strip is open, rest; ease back in when it closes
+  document.addEventListener("viewer:change", e => {
+    if (e.detail) {
+      hold("viewer", true, { instant: true });
+      hold("press", false, { instant: true });
+    } else {
+      hold("viewer", false);
+    }
+  });
+
+  // Save battery: stop while off screen or when the tab is hidden
   if ("IntersectionObserver" in window) {
     new IntersectionObserver(([entry]) => {
-      reel.classList.toggle("is-offscreen", !entry.isIntersecting);
+      hold("offscreen", !entry.isIntersecting, { instant: true });
     }, { rootMargin: "100px 0px" }).observe(reel);
   }
-})();
-
-/* ---------- Lightbox ---------- */
-const lightbox = $("#lightbox");
-const lbImg = $("#lbImg");
-const lbCount = $("#lbCount");
-let lbIndex = 0;
-
-function showPhoto(i) {
-  const list = PHOTOS[currentFolder];
-  lbIndex = (i + list.length) % list.length;
-  const [file, , , alt] = list[lbIndex];
-
-  lbImg.classList.add("is-loading");
-  const next = new Image();
-  next.onload = () => {
-    lbImg.src = next.src;
-    lbImg.alt = alt;
-    lbImg.classList.remove("is-loading");
-  };
-  next.src = `assets/photos/${file}`;
-  lbCount.textContent = `${lbIndex + 1} / ${list.length}`;
-
-  // Preload neighbours
-  [lbIndex + 1, lbIndex - 1].forEach(n => {
-    const [f] = list[(n + list.length) % list.length];
-    new Image().src = `assets/photos/${f}`;
+  document.addEventListener("visibilitychange", () => {
+    hold("hidden", document.hidden, { instant: true });
   });
-}
-
-function openLightbox(i) {
-  lbImg.removeAttribute("src");
-  showPhoto(i);
-  lightbox.showModal();
-}
-
-$("#lbClose").addEventListener("click", () => lightbox.close());
-$("#lbPrev").addEventListener("click", () => showPhoto(lbIndex - 1));
-$("#lbNext").addEventListener("click", () => showPhoto(lbIndex + 1));
-
-lightbox.addEventListener("click", e => {
-  if (e.target === lightbox) lightbox.close(); // click on the dark area
-});
-
-lightbox.addEventListener("close", () => {
-  const items = $$(".gallery__item", galleryGrid);
-  if (items[lbIndex]) items[lbIndex].focus();
-});
-
-document.addEventListener("keydown", e => {
-  if (!lightbox.open) return;
-  if (e.key === "ArrowRight") showPhoto(lbIndex + 1);
-  if (e.key === "ArrowLeft") showPhoto(lbIndex - 1);
-});
-
-// Swipe on phones
-let touchX = null;
-lightbox.addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
-lightbox.addEventListener("touchend", e => {
-  if (touchX === null) return;
-  const dx = e.changedTouches[0].clientX - touchX;
-  if (Math.abs(dx) > 50) showPhoto(lbIndex + (dx < 0 ? 1 : -1));
-  touchX = null;
-});
+})();

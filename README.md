@@ -32,6 +32,8 @@ The photo count on the folder updates automatically.
 
 The strip of sliding photos under the About section is built from the portfolio list. To change which photos appear, edit `REEL_PICKS` in `script.js`. Each entry is `[folder, photo number]`, for example `["bride", 2]` for `bride-02.webp`.
 
+Tapping a strip photo opens just that photo (visitors can swipe through its folder); closing it returns to the strip, which eases back into motion. Speed and easing time are set by `REEL_SPEED` and `REEL_EASE_MS` in `script.js`.
+
 ## Publishing on GitHub Pages
 
 1. Push this folder to the repository `Lav-ghosh-photography`.
