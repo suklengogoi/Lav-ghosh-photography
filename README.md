@@ -28,6 +28,10 @@ assets/
 
 The photo count on the folder updates automatically.
 
+## Moving frames strip
+
+The strip of sliding photos under the About section is built from the portfolio list. To change which photos appear, edit `REEL_PICKS` in `script.js`. Each entry is `[folder, photo number]`, for example `["bride", 2]` for `bride-02.webp`.
+
 ## Publishing on GitHub Pages
 
 1. Push this folder to the repository `Lav-ghosh-photography`.

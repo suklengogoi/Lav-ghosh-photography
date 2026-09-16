@@ -340,6 +340,89 @@ if (FOLDERS[location.hash.slice(1)]) {
   openGallery(key);
 }
 
+/* ---------- Moving frames ----------
+   Picks photos from PHOTOS, draws them twice in a row and slides the row
+   left forever (CSS animation). The second copy makes the loop seamless.
+   To change the photos, edit REEL_PICKS: [folder, photo number]. */
+const REEL_PICKS = [
+  ["bride", 2], ["prewedding", 1], ["candid", 3], ["couple", 1],
+  ["prewedding", 2], ["bride", 6], ["candid", 1], ["prewedding", 6],
+  ["couple", 2], ["bride", 8], ["prewedding", 10], ["candid", 5]
+];
+
+(function setupReel() {
+  const reel = $("#frames");
+  const viewport = $("#reelViewport");
+  const track = $("#reelTrack");
+  if (!reel || !track) return;
+
+  let reelDragged = false; // true when the visitor swiped instead of tapping
+  const picks = REEL_PICKS.filter(([key, n]) => PHOTOS[key] && PHOTOS[key][n - 1]);
+
+  const makeFrame = ([key, n], isCopy) => {
+    const [file, w, h, alt] = PHOTOS[key][n - 1];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reel__frame";
+    if (isCopy) {
+      btn.setAttribute("aria-hidden", "true");
+      btn.tabIndex = -1;
+    } else {
+      btn.setAttribute("aria-label", `Open photo: ${alt} (${FOLDERS[key].title})`);
+    }
+    const img = document.createElement("img");
+    img.src = `assets/thumbs/${file}`;
+    img.alt = isCopy ? "" : alt;
+    img.width = w;
+    img.height = h;
+    img.decoding = "async";
+    img.draggable = false;
+    btn.appendChild(img);
+    btn.addEventListener("click", () => {
+      if (reelDragged) return; // a swipe/hold is not a tap
+      lastFolderButton = btn;
+      openGallery(key);
+      openLightbox(n - 1);
+    });
+    return btn;
+  };
+
+  const frag = document.createDocumentFragment();
+  picks.forEach(p => frag.appendChild(makeFrame(p, false)));
+  picks.forEach(p => frag.appendChild(makeFrame(p, true)));
+  track.appendChild(frag);
+
+  // Keep the speed the same on every screen: about 45px per second
+  const setSpeed = () => {
+    const half = track.scrollWidth / 2;
+    if (half > 0) track.style.setProperty("--reel-duration", `${Math.round(half / 45)}s`);
+  };
+  setSpeed();
+  window.addEventListener("resize", setSpeed, { passive: true });
+  window.addEventListener("load", setSpeed);
+
+  // Press and hold on phones pauses the strip; a tiny movement still counts as a tap
+  let startX = 0;
+  viewport.addEventListener("pointerdown", e => {
+    startX = e.clientX;
+    reelDragged = false;
+    viewport.classList.add("is-held");
+  });
+  viewport.addEventListener("pointermove", e => {
+    if (viewport.classList.contains("is-held") && Math.abs(e.clientX - startX) > 10) reelDragged = true;
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(ev =>
+    viewport.addEventListener(ev, () => viewport.classList.remove("is-held"))
+  );
+
+  // Save battery: stop the animation while the strip is off screen
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([entry]) => {
+      reel.classList.toggle("is-offscreen", !entry.isIntersecting);
+    }, { rootMargin: "100px 0px" }).observe(reel);
+  }
+})();
+
 /* ---------- Lightbox ---------- */
 const lightbox = $("#lightbox");
 const lbImg = $("#lbImg");
