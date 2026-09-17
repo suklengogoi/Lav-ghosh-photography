@@ -46,7 +46,7 @@ If the repository name or domain is different, update the `og:url`, `og:image` a
 
 - WhatsApp and phone: 70021 41589
 - Instagram: https://www.instagram.com/portraitsbylavghosh/
-- Facebook: https://www.facebook.com/lav.ghosh.77
+- Facebook: https://www.facebook.com/share/1JBXtwMJHP/
 - Map: https://maps.app.goo.gl/2yn5K17pZN2jZXrm6
 
 ## Updating files later
