@@ -26,6 +26,7 @@ const PHOTOS = {
     ["bride-12.webp", 2000, 1331, "Bride lit by a single beam of light in black and white"],
     ["bride-13.webp", 1600, 2000, "Bride adjusting her ring in dappled light"],
     ["bride-14.webp", 1600, 2000, "Bride twirling her saree in a garden"],
+    ["bride-15.webp", 1600, 2000, "Bride with sindoor, eyes closed, in warm red light"],
   ],
   prewedding: [
     ["prewedding-01.webp", 1600, 2000, "Couple forehead to forehead at sunset"],
