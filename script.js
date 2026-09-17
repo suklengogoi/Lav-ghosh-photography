@@ -214,9 +214,10 @@ const heroPause = $("#heroPause");
 
   // Power-saving modes block autoplay until the visitor touches the page
   const unlockEvents = ["touchend", "pointerdown", "click", "keydown"];
+  let heroOnScreen = true;
   const unlock = e => {
     if (heroPause.contains(e.target)) return; // the button handles its own tap
-    tryPlay();
+    if (heroOnScreen) tryPlay(); // don't start it while scrolled away (saves battery on phones)
     unlockEvents.forEach(ev => document.removeEventListener(ev, unlock, true));
   };
   unlockEvents.forEach(ev => document.addEventListener(ev, unlock, { capture: true, passive: true }));
@@ -240,7 +241,8 @@ const heroPause = $("#heroPause");
   // Save battery: pause when the hero is off screen, resume when it's back
   if ("IntersectionObserver" in window) {
     new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) tryPlay();
+      heroOnScreen = entry.isIntersecting;
+      if (entry.isIntersecting && !document.body.classList.contains("film-open")) tryPlay();
       else if (!heroVideo.paused) heroVideo.pause();
     }).observe(heroVideo);
   }
@@ -249,6 +251,21 @@ const heroPause = $("#heroPause");
 window.addEventListener("load", () => document.body.classList.add("is-loaded"));
 // Fallback in case load is slow
 setTimeout(() => document.body.classList.add("is-loaded"), 1200);
+
+/* ---------- History for pop-ups ----------
+   Folders, photos and reels add a history entry so the phone Back button
+   closes them. While one is open, the browser must not move the page when
+   Back is pressed (it would jump to a #section the visitor came from). */
+function pushOverlayState(state, url = location.href) {
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  history.pushState(state, "", url);
+}
+function restoreScrollBehaviour() {
+  const overlayOpen = document.querySelector("dialog[open]");
+  if (!overlayOpen && "scrollRestoration" in history) {
+    setTimeout(() => { history.scrollRestoration = "auto"; }, 50);
+  }
+}
 
 /* ---------- Gallery (folder view) ---------- */
 const gallery = $("#gallery");
@@ -291,7 +308,7 @@ function openGallery(key, { push = true } = {}) {
   if (!gallery.open) gallery.showModal();
   gallery.scrollTop = 0;
   document.body.classList.add("is-locked");
-  if (push) history.pushState({ folder: key }, "", `#${key}`);
+  if (push) pushOverlayState({ folder: key }, `#${key}`);
 }
 
 function closeGallery({ fromHistory = false } = {}) {
@@ -327,7 +344,13 @@ gallery.addEventListener("cancel", e => {
   closeGallery();
 });
 
+window.addEventListener("popstate", () => setTimeout(restoreScrollBehaviour, 0));
 window.addEventListener("popstate", e => {
+  // Back pressed while a reel is playing
+  if (filmViewer.open && !(e.state && e.state.film)) {
+    filmViewer.close();
+    return;
+  }
   // Back pressed while a photo opened from the moving strip is showing
   if (lightbox.open && lbMode === "single" && !(e.state && e.state.photo)) {
     lightbox.close();
@@ -406,7 +429,7 @@ function openSinglePhoto(key, i, fromEl) {
   showPhoto(i);
   lightbox.showModal();
   document.body.classList.add("is-locked");
-  history.pushState({ photo: true }, "", location.href); // phone Back closes the photo
+  pushOverlayState({ photo: true }); // phone Back closes the photo
   document.dispatchEvent(new CustomEvent("viewer:change", { detail: true }));
 }
 
@@ -464,56 +487,24 @@ const REEL_PICKS = [
 const REEL_SPEED = 45;      // pixels per second
 const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
 
-(function setupReel() {
-  const reel = $("#frames");
-  const viewport = $("#reelViewport");
-  const track = $("#reelTrack");
-  if (!reel || !track) return;
-
-  let dragged = false; // true when the visitor swiped instead of tapping
-  const picks = REEL_PICKS.filter(([key, n]) => PHOTOS[key] && PHOTOS[key][n - 1]);
-
-  const makeFrame = ([key, n], isCopy) => {
-    const [file, w, h, alt] = PHOTOS[key][n - 1];
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "reel__frame";
-    if (isCopy) {
-      btn.setAttribute("aria-hidden", "true");
-      btn.tabIndex = -1;
-    } else {
-      btn.setAttribute("aria-label", `Open photo: ${alt} (${FOLDERS[key].title})`);
-    }
-    const img = document.createElement("img");
-    img.src = `assets/thumbs/${file}`;
-    img.alt = isCopy ? "" : alt;
-    img.width = w;
-    img.height = h;
-    img.decoding = "async";
-    img.draggable = false;
-    btn.appendChild(img);
-    btn.addEventListener("click", () => {
-      if (dragged) return; // a swipe is not a tap
-      openSinglePhoto(key, n - 1, btn);
-    });
-    return btn;
-  };
-
-  const frag = document.createDocumentFragment();
-  picks.forEach(p => frag.appendChild(makeFrame(p, false)));
-  picks.forEach(p => frag.appendChild(makeFrame(p, true)));
-  track.appendChild(frag);
-
-  if (reduceMotion) return; // CSS turns the strip into a swipeable row
+/* ---------- Shared motion for the moving strips ----------
+   Slides a track (which holds its items twice) to the left forever and
+   eases to a stop / back up for hover, press-and-hold, keyboard focus,
+   an open viewer, or when the strip is off screen.
+   Returns an object whose wasDragged() tells a click handler to ignore
+   swipes and long presses. */
+function startMovingStrip({ section, viewport, track, speed, jsClass, itemSelector }) {
+  const state = { dragged: false, wasDragged: () => state.dragged };
+  if (reduceMotion) return state; // CSS turns the strip into a swipeable row
 
   // Older browsers without the Web Animations API keep the plain CSS animation
   if (!track.animate) {
-    track.style.setProperty("--reel-duration", `${Math.round(track.scrollWidth / 2 / REEL_SPEED)}s`);
-    return;
+    track.style.setProperty("--strip-duration", `${Math.round(track.scrollWidth / 2 / speed)}s`);
+    return state;
   }
 
-  reel.classList.add("reel--js"); // switches off the CSS animation
-  const durationFor = () => Math.max(10000, Math.round((track.scrollWidth / 2 / REEL_SPEED) * 1000));
+  section.classList.add(jsClass); // switches off the CSS animation
+  const durationFor = () => Math.max(10000, Math.round((track.scrollWidth / 2 / speed) * 1000));
   let duration = durationFor();
   const anim = track.animate(
     [{ transform: "translate3d(0, 0, 0)" }, { transform: "translate3d(-50%, 0, 0)" }],
@@ -531,6 +522,7 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
   };
   window.addEventListener("resize", refit, { passive: true });
   window.addEventListener("load", refit);
+  track.addEventListener("load", refit, true); // images finishing can change the width
 
   // ---- Smooth pause / resume ----
   // Every reason to hold the strip still is tracked; it moves only when there are none.
@@ -544,7 +536,7 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
   const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
   const step = now => {
-    const t = Math.min(1, (now - rampStart) / REEL_EASE_MS);
+    const t = Math.min(1, Math.max(0, (now - rampStart) / REEL_EASE_MS)); // frame time can be a hair before rampStart
     rate = rampFrom + (rampTo - rampFrom) * ease(t);
     anim.playbackRate = rate;
     if (t < 1) rafId = requestAnimationFrame(step);
@@ -553,7 +545,7 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
 
   const update = ({ instant = false } = {}) => {
     const target = holds.size ? 0 : 1;
-    reel.dataset.state = target ? "moving" : "paused"; // handy for testing
+    section.dataset.state = target ? "moving" : "paused"; // handy for testing
     if (instant) {
       cancelAnimationFrame(rafId);
       rafId = 0;
@@ -579,22 +571,22 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
   viewport.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") hold("hover", true); });
   viewport.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") hold("hover", false); });
 
-  // Press and hold with a finger; small movement still counts as a tap
-  // A press longer than LONG_PRESS_MS means "hold to look", so releasing it doesn't open the photo
+  // Press and hold with a finger; small movement still counts as a tap.
+  // A press longer than LONG_PRESS_MS means "hold to look", so releasing it doesn't open anything.
   const LONG_PRESS_MS = 500;
   let startX = 0;
   let pressTimer = 0;
   viewport.addEventListener("pointerdown", e => {
     startX = e.clientX;
-    dragged = false;
+    state.dragged = false;
     if (e.pointerType !== "mouse") {
       hold("press", true);
       clearTimeout(pressTimer);
-      pressTimer = setTimeout(() => { dragged = true; }, LONG_PRESS_MS);
+      pressTimer = setTimeout(() => { state.dragged = true; }, LONG_PRESS_MS);
     }
   });
   viewport.addEventListener("pointermove", e => {
-    if (holds.has("press") && Math.abs(e.clientX - startX) > 10) dragged = true;
+    if (holds.has("press") && Math.abs(e.clientX - startX) > 10) state.dragged = true;
   });
   // Release anywhere (the finger may lift outside the strip, or the page may scroll)
   ["pointerup", "pointercancel"].forEach(ev =>
@@ -605,18 +597,18 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
   );
   // No "save image" pop-up on long press inside the strip
   viewport.addEventListener("contextmenu", e => {
-    if (e.target.closest(".reel__frame")) e.preventDefault();
+    if (e.target.closest(itemSelector)) e.preventDefault();
   });
 
-  // Keyboard focus on a frame (not mouse or touch focus)
+  // Keyboard focus on an item (not mouse or touch focus)
   viewport.addEventListener("focusin", e => {
-    if (usingKeyboard && e.target.matches(".reel__frame")) hold("keyboard", true);
+    if (usingKeyboard && e.target.matches(itemSelector)) hold("keyboard", true);
   });
   viewport.addEventListener("focusout", e => {
     if (!viewport.contains(e.relatedTarget)) hold("keyboard", false);
   });
 
-  // While a photo from the strip is open, rest; ease back in when it closes
+  // While a photo or reel viewer is open, rest; ease back in when it closes
   document.addEventListener("viewer:change", e => {
     if (e.detail) {
       hold("viewer", true, { instant: true });
@@ -630,9 +622,232 @@ const REEL_EASE_MS = 600;   // how long slowing down / speeding up takes
   if ("IntersectionObserver" in window) {
     new IntersectionObserver(([entry]) => {
       hold("offscreen", !entry.isIntersecting, { instant: true });
-    }, { rootMargin: "100px 0px" }).observe(reel);
+    }, { rootMargin: "100px 0px" }).observe(section);
   }
   document.addEventListener("visibilitychange", () => {
     hold("hidden", document.hidden, { instant: true });
+  });
+
+  return state;
+}
+
+/* ---------- Moving photo frames ---------- */
+(function setupReel() {
+  const reel = $("#frames");
+  const viewport = $("#reelViewport");
+  const track = $("#reelTrack");
+  if (!reel || !track) return;
+
+  let motion = { wasDragged: () => false };
+  const picks = REEL_PICKS.filter(([key, n]) => PHOTOS[key] && PHOTOS[key][n - 1]);
+
+  const makeFrame = ([key, n], isCopy) => {
+    const [file, w, h, alt] = PHOTOS[key][n - 1];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reel__frame";
+    if (isCopy) {
+      btn.setAttribute("aria-hidden", "true");
+      btn.tabIndex = -1;
+    } else {
+      btn.setAttribute("aria-label", `Open photo: ${alt} (${FOLDERS[key].title})`);
+    }
+    const img = document.createElement("img");
+    img.src = `assets/thumbs/${file}`;
+    img.alt = isCopy ? "" : alt;
+    img.width = w;
+    img.height = h;
+    img.decoding = "async";
+    img.draggable = false;
+    btn.appendChild(img);
+    btn.addEventListener("click", () => {
+      if (motion.wasDragged()) return; // a swipe is not a tap
+      openSinglePhoto(key, n - 1, btn);
+    });
+    return btn;
+  };
+
+  const frag = document.createDocumentFragment();
+  picks.forEach(p => frag.appendChild(makeFrame(p, false)));
+  picks.forEach(p => frag.appendChild(makeFrame(p, true)));
+  track.appendChild(frag);
+
+  motion = startMovingStrip({
+    section: reel, viewport, track,
+    speed: REEL_SPEED, jsClass: "reel--js", itemSelector: ".reel__frame"
+  });
+})();
+
+/* ---------- Reels (client films) ----------
+   Each reel: file name (in assets/films/), title, length.
+   Every reel needs three files: film-XX.mp4 (the reel), film-XX-poster.webp
+   (still image) and film-XX-preview.mp4 (short silent clip shown on hover). */
+const FILMS = [
+  ["film-01", "Wedding album & calendar", "0:44"],
+  ["film-02", "The album reveal", "0:36"],
+  ["film-03", "Premium combo album set", "0:24"],
+  ["film-04", "The premium treatment", "0:17"]
+];
+const FILM_SPEED = 38; // pixels per second
+
+const filmViewer = $("#filmViewer");
+const fvVideo = $("#fvVideo");
+const fvTitle = $("#fvTitle");
+const fvCount = $("#fvCount");
+let fvIndex = 0;
+let fvReturnTo = null;
+
+function loadFilm(i, { autoplay = true } = {}) {
+  fvIndex = (i + FILMS.length) % FILMS.length;
+  const [id, title, len] = FILMS[fvIndex];
+  fvVideo.pause();
+  fvVideo.poster = `assets/films/${id}-poster.webp`;
+  fvVideo.src = `assets/films/${id}.mp4`;
+  fvVideo.load();
+  fvTitle.textContent = title;
+  fvCount.textContent = `${fvIndex + 1} / ${FILMS.length} · ${len}`;
+  if (!autoplay) return;
+  fvVideo.muted = false;
+  const attempt = fvVideo.play();
+  if (attempt && attempt.catch) {
+    // If the browser refuses sound without a tap, play muted; the controls can unmute
+    attempt.catch(() => {
+      fvVideo.muted = true;
+      fvVideo.play().catch(() => {});
+    });
+  }
+}
+
+function openFilm(i, fromEl) {
+  fvReturnTo = fromEl || null;
+  document.body.classList.add("is-locked", "film-open");
+  filmViewer.showModal();
+  loadFilm(i);
+  pushOverlayState({ film: true }); // phone Back closes the player
+  if (heroVideo && !heroVideo.paused) heroVideo.pause(); // one video at a time
+  document.dispatchEvent(new CustomEvent("viewer:change", { detail: true }));
+}
+
+filmViewer.addEventListener("close", () => {
+  // Stop the reel completely and free the memory
+  fvVideo.pause();
+  fvVideo.removeAttribute("src");
+  fvVideo.load();
+  document.body.classList.remove("film-open");
+  if (!gallery.open && !lightbox.open) document.body.classList.remove("is-locked");
+  if (history.state && history.state.film) history.back();
+  if (usingKeyboard && fvReturnTo) fvReturnTo.focus({ preventScroll: true });
+  else if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  document.dispatchEvent(new CustomEvent("viewer:change", { detail: false }));
+});
+
+$("#fvClose").addEventListener("click", () => filmViewer.close());
+$("#fvPrev").addEventListener("click", () => loadFilm(fvIndex - 1));
+$("#fvNext").addEventListener("click", () => loadFilm(fvIndex + 1));
+filmViewer.addEventListener("click", e => {
+  if (e.target === filmViewer) filmViewer.close(); // click on the empty area
+});
+// When a reel ends, go on to the next one
+fvVideo.addEventListener("ended", () => loadFilm(fvIndex + 1));
+
+document.addEventListener("keydown", e => {
+  if (!filmViewer.open || e.target === fvVideo) return; // on the video, arrows seek
+  if (e.key === "ArrowRight") loadFilm(fvIndex + 1);
+  if (e.key === "ArrowLeft") loadFilm(fvIndex - 1);
+});
+
+// Swipe left / right between reels (not on the video's control bar)
+let fvTouch = null;
+filmViewer.addEventListener("touchstart", e => {
+  const t = e.touches[0];
+  const r = fvVideo.getBoundingClientRect();
+  const onControls = t.clientY > r.bottom - 70 && t.clientY < r.bottom + 10;
+  fvTouch = onControls ? null : { x: t.clientX, y: t.clientY };
+}, { passive: true });
+filmViewer.addEventListener("touchend", e => {
+  if (!fvTouch) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - fvTouch.x;
+  const dy = t.clientY - fvTouch.y;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) loadFilm(fvIndex + (dx < 0 ? 1 : -1));
+  fvTouch = null;
+});
+
+(function setupFilms() {
+  const section = $("#films");
+  const viewport = $("#filmsViewport");
+  const track = $("#filmsTrack");
+  if (!section || !track) return;
+
+  let motion = { wasDragged: () => false };
+  const canPreview = !reduceMotion && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  const makeCard = (i, isCopy) => {
+    const [id, title, len] = FILMS[i];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "film-card";
+    if (isCopy) {
+      btn.setAttribute("aria-hidden", "true");
+      btn.tabIndex = -1;
+    } else {
+      btn.setAttribute("aria-label", `Play reel: ${title}, ${len}`);
+    }
+    btn.innerHTML = `
+      <span class="film-card__media">
+        <img src="assets/films/${id}-poster.webp" alt="" width="720" height="1280" decoding="async" draggable="false">
+        <span class="film-card__time">${len}</span>
+        <span class="film-card__play" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+        </span>
+      </span>
+      <span class="film-card__title">${title}</span>`;
+
+    // Computers: a short silent preview plays while the mouse is over the card
+    if (canPreview) {
+      let preview = null;
+      btn.addEventListener("pointerenter", e => {
+        if (e.pointerType !== "mouse") return;
+        if (!preview) {
+          preview = document.createElement("video");
+          preview.className = "film-card__preview";
+          preview.muted = true;
+          preview.loop = true;
+          preview.playsInline = true;
+          preview.setAttribute("aria-hidden", "true");
+          preview.src = `assets/films/${id}-preview.mp4`;
+          preview.addEventListener("playing", () => btn.classList.add("is-previewing"));
+          $(".film-card__media", btn).appendChild(preview);
+        }
+        preview.play().catch(() => {});
+      });
+      btn.addEventListener("pointerleave", () => {
+        btn.classList.remove("is-previewing");
+        if (preview) preview.pause();
+      });
+    }
+
+    btn.addEventListener("click", () => {
+      if (motion.wasDragged()) return; // a swipe or long press is not a tap
+      if (btn.querySelector("video")) btn.querySelector("video").pause();
+      btn.classList.remove("is-previewing");
+      openFilm(i, btn);
+    });
+    return btn;
+  };
+
+  // Each half holds the reel set several times so the loop has no gap on wide screens
+  const SETS_PER_HALF = 3;
+  const frag = document.createDocumentFragment();
+  for (let half = 0; half < 2; half++) {
+    for (let set = 0; set < SETS_PER_HALF; set++) {
+      FILMS.forEach((_, i) => frag.appendChild(makeCard(i, !(half === 0 && set === 0))));
+    }
+  }
+  track.appendChild(frag);
+
+  motion = startMovingStrip({
+    section, viewport, track,
+    speed: FILM_SPEED, jsClass: "films--js", itemSelector: ".film-card"
   });
 })();

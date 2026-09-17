@@ -49,6 +49,18 @@ If the repository name or domain is different, update the `og:url`, `og:image` a
 - Facebook: https://www.facebook.com/share/1JBXtwMJHP/
 - Map: https://maps.app.goo.gl/2yn5K17pZN2jZXrm6
 
+## Reels
+
+The Reels section (between Portfolio and Services) is built from `FILMS` in `script.js`.
+Each reel needs three files in `assets/films/`:
+
+- `film-05.mp4`: the reel (H.264, 720x1280, with sound; keep it under 25 MB)
+- `film-05-poster.webp`: a still image from the reel (720x1280)
+- `film-05-preview.mp4`: a 4-second silent clip (360x640), played on hover on computers
+
+Then add a line to `FILMS`, for example `["film-05", "Title of the reel", "0:30"]`.
+Phone videos are usually HEVC (H.265), which many browsers can't play, so always convert them to H.264 first.
+
 ## Updating files later
 
 - The hero film sources are written directly in `index.html`, so the film plays even if `script.js` fails to load.

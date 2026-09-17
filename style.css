@@ -408,7 +408,7 @@ p { margin: 0 0 1.1em; }
 .reel__track {
   display: flex;
   width: max-content;
-  animation: reel-move var(--reel-duration, 70s) linear infinite;
+  animation: reel-move var(--strip-duration, 70s) linear infinite;
   will-change: transform;
 }
 @keyframes reel-move {
@@ -547,6 +547,245 @@ p { margin: 0 0 1.1em; }
 .folder:hover .folder__name { border-bottom-color: var(--gold); }
 .folder__meta { font-size: .85rem; color: var(--gold-text); margin: .3rem 0 .6rem; }
 .folder__desc { font-size: .92rem; line-height: 1.55; color: var(--muted); }
+
+/* =========================================================
+   Reels (moving strip of client films + player)
+   ========================================================= */
+.films {
+  padding: var(--section-gap) 0 clamp(4.5rem, 9vw, 7rem);
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+.films__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 24rem);
+  align-items: end;
+  gap: 1.2rem 4rem;
+  padding: 0 var(--pad);
+  margin-bottom: clamp(1.8rem, 3.5vw, 2.8rem);
+}
+.films__side p { color: var(--text-soft); margin-bottom: .6rem; }
+
+.films__viewport {
+  --film-h: clamp(340px, 30vw, 460px);
+  position: relative;
+  overflow: hidden;
+  padding: 1.2rem 0 1rem;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
+          mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
+}
+.films__track {
+  display: flex;
+  width: max-content;
+  animation: reel-move var(--strip-duration, 90s) linear infinite;
+  will-change: transform;
+}
+.films--js .films__track { animation: none; }
+@media (hover: hover) {
+  .films:not(.films--js) .films__viewport:hover .films__track { animation-play-state: paused; }
+}
+
+.film-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .7rem;
+  margin-right: clamp(.9rem, 1.8vw, 1.6rem); /* margin, not gap, keeps the loop seamless */
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.film-card__media {
+  position: relative;
+  display: block;
+  height: var(--film-h);
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 5px solid var(--white);
+  background: var(--champagne);
+  box-shadow: 0 12px 30px rgba(74, 52, 30, .18);
+  transition: transform .5s cubic-bezier(.2, .7, .2, 1), box-shadow .5s;
+}
+.film-card__media img,
+.film-card__preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.film-card__preview { opacity: 0; transition: opacity .4s; }
+.film-card.is-previewing .film-card__preview { opacity: 1; }
+.film-card__media::after { /* soft shade so the badges read on any poster */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(22, 18, 15, .45), rgba(22, 18, 15, 0) 38%);
+  pointer-events: none;
+}
+.film-card__play {
+  position: absolute;
+  left: .8rem;
+  bottom: .8rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(253, 251, 247, .92);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  transition: transform .4s cubic-bezier(.2, .7, .2, 1), background-color .3s;
+}
+.film-card__play svg { margin-left: 2px; }
+.film-card__time {
+  position: absolute;
+  top: .7rem;
+  right: .7rem;
+  z-index: 1;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: rgba(22, 18, 15, .55);
+  color: var(--on-photo);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.film-card__title {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  line-height: 1.25;
+  max-width: calc(var(--film-h) * 9 / 16);
+}
+@media (hover: hover) {
+  .film-card:hover .film-card__media {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(74, 52, 30, .24);
+  }
+  .film-card:hover .film-card__play { transform: scale(1.08); background: var(--gold); }
+}
+.film-card:focus-visible { outline: none; }
+.film-card:focus-visible .film-card__media {
+  outline: 2px solid var(--gold-text);
+  outline-offset: 3px;
+  transform: translateY(-8px);
+}
+
+/* Reel player */
+.film-viewer {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 1.5rem 5rem;
+  border: 0;
+  background: var(--cream);
+  color: var(--text);
+}
+.film-viewer[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: film-in .35s cubic-bezier(.2, .7, .2, 1);
+}
+@keyframes film-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.film-viewer::backdrop { background: rgba(42, 33, 28, .45); }
+.film-viewer__stage {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .8rem;
+}
+.film-viewer__stage video {
+  display: block;
+  height: min(calc(100vh - 7rem), calc((100vw - 10rem) * 16 / 9));
+  height: min(calc(100svh - 7rem), calc((100vw - 10rem) * 16 / 9));
+  aspect-ratio: 9 / 16;
+  width: auto;
+  max-width: 100%;
+  border-radius: 14px;
+  background: #16120f;
+  box-shadow: 0 16px 50px rgba(74, 52, 30, .25);
+}
+.film-viewer__stage figcaption {
+  display: flex;
+  gap: .8rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+}
+.film-viewer__title { font-family: var(--serif); font-size: 1.15rem; }
+.film-viewer__count { font-size: .8rem; color: var(--muted); }
+.film-viewer__close,
+.film-viewer__nav {
+  position: absolute;
+  z-index: 2;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--serif);
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.film-viewer__close { top: .8rem; right: .8rem; font-size: 2.4rem; }
+.film-viewer__nav { top: 50%; transform: translateY(-50%); font-size: 3.2rem; }
+.film-viewer__prev { left: .8rem; }
+.film-viewer__next { right: .8rem; }
+.film-viewer__close:hover,
+.film-viewer__nav:hover { color: var(--gold-text); }
+
+@media (max-width: 860px) {
+  .films__head { grid-template-columns: 1fr; }
+  .film-viewer { padding: 4.2rem 0 4.2rem; }
+  .film-viewer__stage video {
+    height: auto;
+    width: min(100vw, calc((100svh - 11rem) * 9 / 16));
+    max-height: calc(100svh - 11rem);
+    border-radius: 10px;
+  }
+  .film-viewer__nav { top: auto; bottom: .4rem; transform: none; }
+  .film-viewer__close { top: .5rem; right: .5rem; background: rgba(253, 251, 247, .9); border-radius: 50%; }
+}
+@media (max-width: 560px) {
+  .films__viewport { --film-h: 340px; }
+  .film-card__title { font-size: 1rem; }
+}
+
+/* Reduced motion: no auto-scroll, no hover previews; visitors swipe the row */
+@media (prefers-reduced-motion: reduce) {
+  .films__viewport {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+            mask-image: none;
+    padding-left: var(--pad);
+    scroll-snap-type: x proximity;
+  }
+  .films__track { animation: none; }
+  .film-card { scroll-snap-align: start; }
+  .film-card[aria-hidden="true"] { display: none; }
+}
 
 /* =========================================================
    Services

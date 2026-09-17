@@ -21,7 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=10">
   <link rel="preload" as="image" href="assets/photos/hero-poster-wide.webp">
 </head>
 <body>
@@ -38,6 +38,7 @@
   <nav class="nav" aria-label="Main">
     <a href="#about">About</a>
     <a href="#portfolio">Portfolio</a>
+    <a href="#films">Reels</a>
     <a href="#services">Services</a>
     <a href="#contact">Contact</a>
   </nav>
@@ -55,6 +56,7 @@
   <nav class="menu-panel__nav" aria-label="Mobile">
     <a href="#about">About</a>
     <a href="#portfolio">Portfolio</a>
+    <a href="#films">Reels</a>
     <a href="#services">Services</a>
     <a href="#destinations">Destinations</a>
     <a href="#contact">Contact</a>
@@ -194,6 +196,24 @@
     </div>
   </section>
 
+  <!-- ========== REELS ========== -->
+  <section class="films" id="films" aria-labelledby="filmsTitle">
+    <div class="films__head">
+      <div>
+        <p class="kicker">Reels</p>
+        <h2 id="filmsTitle">See the albums come to life.</h2>
+      </div>
+      <div class="films__side">
+        <p>Albums, keepsakes and wedding stories, in motion. Tap a reel to watch it with sound.</p>
+        <a class="text-link" href="https://www.instagram.com/portraitsbylavghosh/" target="_blank" rel="noopener">More reels on Instagram</a>
+      </div>
+    </div>
+    <!-- Reel cards are added by script.js from the FILMS list -->
+    <div class="films__viewport" id="filmsViewport">
+      <div class="films__track" id="filmsTrack"></div>
+    </div>
+  </section>
+
   <!-- ========== SERVICES ========== -->
   <section class="services section" id="services" aria-labelledby="servicesTitle">
     <figure class="services__photo">
@@ -329,6 +349,21 @@
   <button class="lightbox__nav lightbox__next" id="lbNext" aria-label="Next photo">›</button>
 </dialog>
 
-<script src="script.js?v=9"></script>
+<!-- ========== REEL PLAYER ========== -->
+<dialog class="film-viewer" id="filmViewer" aria-label="Reel player">
+  <button class="film-viewer__close" id="fvClose" type="button" aria-label="Close reel">×</button>
+  <button class="film-viewer__nav film-viewer__prev" id="fvPrev" type="button" aria-label="Previous reel">‹</button>
+  <figure class="film-viewer__stage">
+    <video id="fvVideo" controls playsinline webkit-playsinline preload="metadata"
+           controlslist="nodownload noplaybackrate" disablepictureinpicture></video>
+    <figcaption>
+      <span class="film-viewer__title" id="fvTitle"></span>
+      <span class="film-viewer__count" id="fvCount"></span>
+    </figcaption>
+  </figure>
+  <button class="film-viewer__nav film-viewer__next" id="fvNext" type="button" aria-label="Next reel">›</button>
+</dialog>
+
+<script src="script.js?v=10"></script>
 </body>
 </html>
